@@ -769,10 +769,129 @@ async function verifyAsyncSch(signature, message, publicKey) {
         return false;
     }
 }
+function extractKWithAdaptorPoint(rand, AP) {
+    const k_ = modN(b2n(rand)); // Let k' = int(rand) mod n
+    if (k_ === 0n)
+        err('sign failed: k is zero'); // Fail if k' = 0.
+    let d_ = toPriv(k_); // same method executed in fromPrivateKey
+    let r = Point.fromPrivateKey(d_); // P = d'⋅G; 0 < d' < n check is done inside
+    const scalar = hasEvenY(r.add(AP)) ? d_ : modN(-d_); // negate k if not hasEvenY(R+AP)
+    return { rx: pointToBytes(r.add(AP)), k: scalar }; // rx = bytes(R+AP)
+}
+/**
+ * Creates Schnorr adaptor signature. Verifies itself before returning anything.
+ * auxRand is optional and is not the sole source of k generation: bad CSPRNG won't be dangerous.
+ */
+function signSchAdaptor(message, privateKey, adaptorPoint, auxRand = etc_schnorr.randomBytes(32)) {
+    const { m, px, d, a } = prepareSchnorrSign(message, privateKey, auxRand);
+    const aux = taggedHash(TG.aux, a);
+    const t = n2b(d ^ b2n(aux)); // Let t be the byte-wise xor of bytes(d) and hash/aux(a)
+    const rand = taggedHash(TG.nonce, t, px, m); // Let rand = hash/nonce(t || bytes(P) || m)
+    const AP = Point.fromHex(adaptorPoint);
+    const { rx, k } = extractKWithAdaptorPoint(rand, AP);
+    const e = challenge(rx, px, m); // Let e = int(hash/challenge(bytes(R+AP) || bytes(P) || m)) mod n.
+    const sig = createSchnorrSignature(k, rx, e, d);
+    if (!verifySch(sig, m, px))
+        err('invalid signature produced');
+    return sig;
+}
+async function signAsyncSchAdaptor(message, privateKey, adaptorPoint, auxRand = etc_schnorr.randomBytes(32)) {
+    const { m, px, d, a } = prepareSchnorrSign(message, privateKey, auxRand);
+    const aux = await taggedHashAsync(TG.aux, a);
+    const t = n2b(d ^ b2n(aux)); // Let t be the byte-wise xor of bytes(d) and hash/aux(a)
+    const rand = await taggedHashAsync(TG.nonce, t, px, m); // Let rand = hash/nonce(t || bytes(P) || m)
+    const AP = Point.fromHex(adaptorPoint);
+    const { rx, k } = extractKWithAdaptorPoint(rand, AP);
+    const e = await challengeAsync(rx, px, m); // Let e = int(hash/challenge(bytes(R+AP) || bytes(P) || m)) mod n.
+    const sig = createSchnorrSignature(k, rx, e, d);
+    // If Verify(bytes(P), m, sig) (see below) returns failure, abort
+    if (!(await verifyAsyncSch(sig, m, px)))
+        err('invalid signature produced');
+    return sig;
+}
+function prepVerifAdaptor(signature, message, publicKey, adaptorPoint) {
+    const sig = au8(signature, 64);
+    const m = au8(message);
+    const pub = au8(publicKey, 32);
+    const P = lift_x(b2n(pub)); // P = lift_x(int(pk)); fail if that fails
+    const r = b2n(sig.subarray(0, 32)); // Let r = int(sig[0:32]); fail if r ≥ p.
+    if (!inRange(r, CURVE.p))
+        return false;
+    const s = b2n(sig.subarray(32, 64)); // Let s = int(sig[32:64]); fail if s ≥ n.
+    if (!inRange(s, N))
+        return false;
+    const R = lift_x(r); // R = lift_x(r)
+    const AP = Point.fromHex(adaptorPoint);
+    const input = concatB(pointToBytes(R.add(AP)), pointToBytes(P), m);
+    return { input, P, r, s, AP };
+}
+function endVerifAdaptor(P, r, s, e, AP) {
+    const ER = G.mulAddQUns(P, s, modN(-e)); // R = s⋅G - e⋅P
+    if (!ER)
+        return false; // Fail if is_infinite(ER)
+    const R = lift_x(r)
+    if (!hasEvenY(R.add(AP))) {
+        return ER.equals(R.negate()); // Fail if ER is not negative R when not hasEvenY(R+AP)
+    }
+    return ER.toAffine().x === r; // Fail if x(ER) ≠ r when hasEvenY(R+AP)
+}
+/**
+ * Verifies Schnorr adaptor signature.
+ * Will swallow errors & return false except for initial type validation of arguments.
+ */
+function verifySchAdaptor(signature, message, publicKey, adaptorPoint) {
+    try {
+        const obj = prepVerifAdaptor(signature, message, publicKey, adaptorPoint) || err('failed');
+        const { input, P, r, s, AP } = obj;
+        const e = challenge(input); // int(challenge(bytes(R+AP)||bytes(P)||m))%n
+        return endVerifAdaptor(P, r, s, e, AP);
+    }
+    catch (error) {
+        return false;
+    }
+}
+async function verifyAsyncSchAdaptor(signature, message, publicKey, adaptorPoint) {
+    try {
+        const obj = prepVerifAdaptor(signature, message, publicKey, adaptorPoint) || err('failed');
+        const { input, P, r, s, AP } = obj;
+        const e = await challengeAsync(input); // int(challenge(bytes(R+AP)||bytes(P)||m))%n
+        return endVerifAdaptor(P, r, s, e, AP);
+    }
+    catch (error) {
+        return false;
+    }
+}
+// Decrypt the adaptor signature with the given secret.
+function adapt(signature, secret) {
+    const sig = au8(signature, 64); // Ensure the signature is 64 bytes
+    const r = b2n(sig.subarray(0, 32)); // Let r = int(sig[0:32]); fail if r ≥ p.
+    if (!inRange(r, CURVE.p))
+        err("invalid signature");
+    const s = b2n(sig.subarray(32, 64)); // Let s = int(sig[32:64]); fail if s ≥ n.
+    if (!inRange(s, N))
+        err("invalid signature");
+    const R = lift_x(r); // R = lift_x(r)
+    const AP = Point.fromPrivateKey(secret); // AP = secret⋅G
+    const adaptedPoint = R.add(AP); // Adapted Point = R+AP
+    const adaptedR = pointToBytes(adaptedPoint); // adapted r = bytes(R+AP)
+    const adaptedS = s + toPriv(secret); // adapted s = s + secret if hasEvenY(R+AP)
+    if (!hasEvenY(adaptedPoint)) {
+        adaptedS = s - toPriv(secret); // adapted s = s - secret if not hasEvenY(R+AP)
+    }
+    return new Signature(adaptedR, adaptedS).toCompactRawBytes();
+}
 export const schnorr = {
     getPublicKey: getPublicKeySch,
     sign: signSch,
     verify: verifySch,
     signAsync: signAsyncSch,
     verifyAsync: verifyAsyncSch,
+};
+export const schnorrAdaptor = {
+    getPublicKey: getPublicKeySch,
+    sign: signSchAdaptor,
+    verify: verifySchAdaptor,
+    signAsync: signAsyncSchAdaptor,
+    verifyAsync: verifyAsyncSchAdaptor,
+    adapt: adapt,
 };

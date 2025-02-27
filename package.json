@@ -1,14 +1,14 @@
 {
-  "name": "@noble/secp256k1",
-  "version": "2.2.3",
-  "description": "Fastest 4KB JS implementation of secp256k1 ECDH & ECDSA signatures compliant with RFC6979",
+  "name": "schnorr-adaptor-signature",
+  "version": "1.0.0",
+  "description": "Schnorr adaptor signature implementation in JS by Side Labs, based on noble-secp256k1.",
   "files": [
     "index.js",
     "index.d.ts",
     "index.ts",
     "schnorr.js",
     "schnorr.d.ts",
-    "schnorr.ts"    
+    "schnorr.ts"
   ],
   "type": "module",
   "main": "index.js",
@@ -27,11 +27,11 @@
     "bench": "node test/benchmark.js",
     "loc": "echo \"`npm run --silent build:min | wc -c` symbols `wc -l < index.ts` LOC, `npm run --silent build:mingz | wc -c`B gzipped\""
   },
-  "author": "Paul Miller (https://paulmillr.com)",
-  "homepage": "https://paulmillr.com/noble/",
+  "author": "Side Labs (https://side.one); Paul Miller (https://paulmillr.com)",
+  "homepage": "https://side.one",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/paulmillr/noble-secp256k1.git"
+    "url": "git+https://github.com/sideprotocol/schnorr-adaptor-signature.git"
   },
   "license": "MIT",
   "devDependencies": {
@@ -40,7 +40,7 @@
     "fast-check": "3.0.0",
     "micro-bmark": "0.4.0",
     "micro-should": "0.5.1",
-    "typescript": "5.8.0-beta"
+    "typescript": "^5.8.0-beta"
   },
   "keywords": [
     "secp256k1",
@@ -53,6 +53,7 @@
     "ecc",
     "curve",
     "schnorr",
+    "adaptor",
     "bitcoin",
     "ethereum"
   ],
@@ -61,6 +62,5 @@
       "types": "./index.d.ts",
       "default": "./index.js"
     }
-  },
-  "funding": "https://paulmillr.com/funding/"
+  }
 }
