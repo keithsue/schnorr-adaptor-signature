@@ -791,7 +791,7 @@ function signSchAdaptor(message, privateKey, adaptorPoint, auxRand = etc_schnorr
     const { rx, k } = extractKWithAdaptorPoint(rand, AP);
     const e = challenge(rx, px, m); // Let e = int(hash/challenge(bytes(R+AP) || bytes(P) || m)) mod n.
     const sig = createSchnorrSignature(k, rx, e, d);
-    if (!verifySch(sig, m, px))
+    if (!verifySchAdaptor(sig, m, px, adaptorPoint))
         err('invalid signature produced');
     return sig;
 }
@@ -805,7 +805,7 @@ async function signAsyncSchAdaptor(message, privateKey, adaptorPoint, auxRand = 
     const e = await challengeAsync(rx, px, m); // Let e = int(hash/challenge(bytes(R+AP) || bytes(P) || m)) mod n.
     const sig = createSchnorrSignature(k, rx, e, d);
     // If Verify(bytes(P), m, sig) (see below) returns failure, abort
-    if (!(await verifyAsyncSch(sig, m, px)))
+    if (!(await verifyAsyncSchAdaptor(sig, m, px, adaptorPoint)))
         err('invalid signature produced');
     return sig;
 }
