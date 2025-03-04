@@ -873,10 +873,10 @@ function adapt(signature, secret) {
     const R = lift_x(r); // R = lift_x(r)
     const AP = Point.fromPrivateKey(secret); // AP = secret⋅G
     const adaptedPoint = R.add(AP); // Adapted Point = R+AP
-    const adaptedR = pointToBytes(adaptedPoint); // adapted r = bytes(R+AP)
-    const adaptedS = s + toPriv(secret); // adapted s = s + secret if hasEvenY(R+AP)
+    const adaptedR = adaptedPoint.aff().x; // adapted r = x(R+AP)
+    let adaptedS = modN(s + toPriv(secret)); // adapted s = s + secret if hasEvenY(R+AP)
     if (!hasEvenY(adaptedPoint)) {
-        adaptedS = s - toPriv(secret); // adapted s = s - secret if not hasEvenY(R+AP)
+        adaptedS = modN(s - toPriv(secret)); // adapted s = s - secret if not hasEvenY(R+AP)
     }
     return new Signature(adaptedR, adaptedS).toCompactRawBytes();
 }
